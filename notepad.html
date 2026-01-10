@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>离线记事本</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f5f5f5;
+        }
+
+        .toolbar {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .toolbar button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .toolbar button:hover {
+            background-color: #2980b9;
+        }
+
+        .toolbar button:active {
+            transform: scale(0.98);
+        }
+
+        .status-bar {
+            background-color: #34495e;
+            color: #ecf0f1;
+            padding: 5px 20px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        #textEditor {
+            flex: 1;
+            width: 100%;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        #textEditor:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .save-path-container {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .save-path-container label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .save-path-container input {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #bdc3c7;
+            border-radius: 3px;
+            min-width: 300px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background-color: #27ae60;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: none;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .notification.error {
+            background-color: #e74c3c;
+        }
+
+        h1 {
+            color: white;
+            font-size: 18px;
+            margin-right: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>📝 离线记事本</h1>
+        <button onclick="newFile()">新建</button>
+        <button onclick="openFile()">打开</button>
+        <button onclick="saveFile()">保存</button>
+        <button onclick="saveAsFile()">另存为</button>
+        <button onclick="clearText()">清空</button>
+    </div>
+
+    <div class="status-bar">
+        <span id="filename">未命名.txt</span>
+        <span id="stats">字符数: 0 | 行数: 1</span>
+    </div>
+
+    <div class="editor-container">
+        <textarea id="textEditor" placeholder="开始输入您的文本..."></textarea>
+        <div class="save-path-container">
+            <label>默认文件名:</label>
+            <input type="text" id="defaultFilename" value="未命名.txt" placeholder="输入文件名">
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" class="file-input" accept=".txt" onchange="handleFileSelect(event)">
+
+    <div id="notification" class="notification"></div>
+
+    <script>
+        let currentFileHandle = null;
+        let hasUnsavedChanges = false;
+        const textEditor = document.getElementById('textEditor');
+        const filenameDisplay = document.getElementById('filename');
+        const statsDisplay = document.getElementById('stats');
+        const defaultFilenameInput = document.getElementById('defaultFilename');
+
+        // 更新统计信息
+        function updateStats() {
+            const text = textEditor.value;
+            const charCount = text.length;
+            const lineCount = text.split('\n').length;
+            statsDisplay.textContent = `字符数: ${charCount} | 行数: ${lineCount}`;
+        }
+
+        // 文本编辑器输入事件
+        textEditor.addEventListener('input', () => {
+            hasUnsavedChanges = true;
+            updateStats();
+        });
+
+        // 显示通知
+        function showNotification(message, isError = false) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification show' + (isError ? ' error' : '');
+            setTimeout(() => {
+                notification.className = 'notification';
+            }, 3000);
+        }
+
+        // 新建文件
+        function newFile() {
+            if (hasUnsavedChanges) {
+                if (!confirm('当前文本尚未保存，确定要新建吗？')) {
+                    return;
+                }
+            }
+            textEditor.value = '';
+            currentFileHandle = null;
+            filenameDisplay.textContent = '未命名.txt';
+            defaultFilenameInput.value = '未命名.txt';
+            hasUnsavedChanges = false;
+            updateStats();
+            showNotification('已新建文件');
+        }
+
+        // 打开文件
+        async function openFile() {
+            if (hasUnsavedChanges) {
+                if (!confirm('当前文本尚未保存，确定要打开新文件吗？')) {
+                    return;
+                }
+            }
+
+            // 尝试使用File System Access API
+            if ('showOpenFilePicker' in window) {
+                try {
+                    const [fileHandle] = await window.showOpenFilePicker({
+                        types: [{
+                            description: '文本文件',
+                            accept: { 'text/plain': ['.txt'] }
+                        }],
+                        multiple: false
+                    });
+
+                    const file = await fileHandle.getFile();
+                    const text = await file.text();
+                    textEditor.value = text;
+                    currentFileHandle = fileHandle;
+                    filenameDisplay.textContent = file.name;
+                    defaultFilenameInput.value = file.name;
+                    hasUnsavedChanges = false;
+                    updateStats();
+                    showNotification('文件已打开: ' + file.name);
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        showNotification('打开文件失败: ' + err.message, true);
+                    }
+                }
+            } else {
+                // 降级到传统的文件输入
+                document.getElementById('fileInput').click();
+            }
+        }
+
+        // 处理传统文件选择
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    textEditor.value = e.target.result;
+                    filenameDisplay.textContent = file.name;
+                    defaultFilenameInput.value = file.name;
+                    hasUnsavedChanges = false;
+                    updateStats();
+                    showNotification('文件已打开: ' + file.name);
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // 保存文件
+        async function saveFile() {
+            const text = textEditor.value;
+
+            // 如果已经有文件句柄，直接保存
+            if (currentFileHandle && 'createWritable' in currentFileHandle) {
+                try {
+                    const writable = await currentFileHandle.createWritable();
+                    await writable.write(text);
+                    await writable.close();
+                    hasUnsavedChanges = false;
+                    showNotification('文件已保存');
+                    return;
+                } catch (err) {
+                    showNotification('保存失败: ' + err.message, true);
+                    return;
+                }
+            }
+
+            // 否则调用另存为
+            await saveAsFile();
+        }
+
+        // 另存为
+        async function saveAsFile() {
+            const text = textEditor.value;
+            const filename = defaultFilenameInput.value || '未命名.txt';
+
+            // 尝试使用File System Access API
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const fileHandle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: '文本文件',
+                            accept: { 'text/plain': ['.txt'] }
+                        }]
+                    });
+
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(text);
+                    await writable.close();
+
+                    currentFileHandle = fileHandle;
+                    filenameDisplay.textContent = fileHandle.name;
+                    defaultFilenameInput.value = fileHandle.name;
+                    hasUnsavedChanges = false;
+                    showNotification('文件已保存');
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        showNotification('保存失败: ' + err.message, true);
+                    }
+                }
+            } else {
+                // 降级到下载方式
+                downloadFile(text, filename);
+            }
+        }
+
+        // 下载文件（降级方案）
+        function downloadFile(text, filename) {
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            hasUnsavedChanges = false;
+            showNotification('文件已下载到默认下载文件夹');
+        }
+
+        // 清空文本
+        function clearText() {
+            if (textEditor.value && !confirm('确定要清空所有文本吗？')) {
+                return;
+            }
+            textEditor.value = '';
+            hasUnsavedChanges = true;
+            updateStats();
+            showNotification('文本已清空');
+        }
+
+        // 页面离开前提示
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + S: 保存
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveFile();
+            }
+            // Ctrl/Cmd + N: 新建
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                newFile();
+            }
+            // Ctrl/Cmd + O: 打开
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                openFile();
+            }
+        });
+
+        // 初始化
+        updateStats();
+    </script>
+</body>
+</html>
