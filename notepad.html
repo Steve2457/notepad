@@ -144,13 +144,61 @@
         h1 {
             color: white;
             font-size: 18px;
+            /* margin-right: auto; */
+        }
+
+        .timer-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 15px;
             margin-right: auto;
+            background-color: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+
+        .timer-wrapper input {
+            width: 50px;
+            padding: 4px;
+            border: none;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .timer-wrapper span {
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .timer-btn {
+            background-color: #27ae60 !important;
+            padding: 4px 10px !important;
+            font-size: 13px !important;
+            height: 28px;
+            line-height: 1;
+        }
+
+        .timer-btn.running {
+            background-color: #e67e22 !important;
+        }
+
+        .timer-btn.reset {
+            background-color: #95a5a6 !important;
         }
     </style>
 </head>
 <body>
     <div class="toolbar">
         <h1>📝 离线记事本</h1>
+        <div class="timer-wrapper">
+            <input type="number" id="timerInput" value="10" min="1" max="180" onchange="resetTimer()" title="分钟">
+            <span id="timerDisplay">10:00</span>
+            <button id="timerBtn" class="timer-btn" onclick="toggleTimer()">开始</button>            <button class="timer-btn reset" onclick="resetTimer()">重置</button>        </div>
         <button onclick="newFile()">新建</button>
         <button onclick="openFile()">打开</button>
         <button onclick="saveFile()">保存</button>
@@ -186,9 +234,10 @@
         // 更新统计信息
         function updateStats() {
             const text = textEditor.value;
-            const charCount = text.length;
+            // 统计单词数 (TOEFL写作主要关注单词数)
+            const wordCount = (text.match(/\S+/g) || []).length;
             const lineCount = text.split('\n').length;
-            statsDisplay.textContent = `字符数: ${charCount} | 行数: ${lineCount}`;
+            statsDisplay.textContent = `单词数: ${wordCount} | 行数: ${lineCount}`;
         }
 
         // 文本编辑器输入事件
@@ -393,6 +442,84 @@
 
         // 初始化
         updateStats();
+
+        // 倒计时功能
+        let timerInterval = null;
+        let timeLeft = 10 * 60;
+        let isTimerRunning = false;
+        
+        const timerInput = document.getElementById('timerInput');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerBtn = document.getElementById('timerBtn');
+        
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+        
+        function resetTimer() {
+            stopTimer(); // 修改时间时先停止
+            const mins = parseInt(timerInput.value) || 30;
+            timeLeft = mins * 60;
+            updateTimerDisplay();
+            timerBtn.textContent = '开始';
+        }
+        
+        function updateTimerDisplay() {
+            timerDisplay.textContent = formatTime(timeLeft);
+            // 改变颜色提示
+            if (timeLeft < 60) { // 最后1分钟
+                timerDisplay.style.color = '#e74c3c'; // 红色
+            } else if (timeLeft < 180) { // 最后3分钟
+                timerDisplay.style.color = '#f1c40f'; // 黄色
+            } else {
+                timerDisplay.style.color = 'white';
+            }
+        }
+
+        function toggleTimer() {
+            if (isTimerRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        }
+        
+        function startTimer() {
+            if (timeLeft <= 0) {
+                resetTimer(); // 如果时间为0，重置为输入框的值
+            }
+            
+            isTimerRunning = true;
+            timerBtn.textContent = '暂停';
+            timerBtn.className = 'timer-btn running';
+            timerInput.disabled = true;
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    showNotification('⏰ 写作时间到！', true);
+                    // 也可以在这里添加音频提示
+                    timerBtn.textContent = '结束';
+                }
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            if (timeLeft > 0) {
+                timerBtn.textContent = '继续';
+            } else {
+                timerBtn.textContent = '开始';
+            }
+            timerBtn.className = 'timer-btn';
+            timerInput.disabled = false;
+        }
     </script>
 </body>
 </html>
